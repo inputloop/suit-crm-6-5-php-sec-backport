@@ -6,9 +6,13 @@ This is what was run on gw19 on 2026-10-21. CI runs the identical scripts.
 
 ```
 sudo lxd init --auto
-# gw19 ships with unprivileged user namespaces disabled; LXD containers need them.
-# This is a hardening setting. Re-enable only while containers run; it does not
-# persist across reboot.
+# gw19 ships with unprivileged user namespaces disabled (CVE-2026-46243
+# mitigation); LXD containers need them. This is a hardening setting.
+# LAB HOST ONLY: do not do this on a shared or production machine. On any such
+# host run the same scripts in docker instead (the CI workflow is exactly that:
+# `docker run --rm -v "$PWD":/w ubuntu:20.04 sh -c 'cd /w && sh php/deps.sh && ...'`,
+# see .github/workflows/build.yml for the per-version base images).
+# Re-enable only while containers run; it does not persist across reboot.
 sudo sysctl -w user.max_user_namespaces=65536
 ```
 
