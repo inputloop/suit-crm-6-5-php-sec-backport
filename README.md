@@ -149,6 +149,12 @@ that `apt` and `dpkg` understand. `debian/build-srcpkg.sh` makes one:
   Debian upload) and builds the source package with `dpkg-source -b`;
 - with `BUILD_BINARY=1`, unpacks that `.dsc` fresh and runs
   `dpkg-buildpackage -b` (needs php7.4's build-dependencies).
+- is reproducible across hosts at the tar level: the changelog entry is written
+  at the CVE commit's author date and mtimes are clamped (`SOURCE_DATE_EPOCH`),
+  so the `debian.tar` *stream* is byte-identical wherever it is built
+  (`DEBIAN-TAR-STREAM.sha256` is the line to compare between witnesses). The
+  `.xz` bytes, and therefore the `.dsc` checksums, still differ between xz 5.2
+  (bullseye) and 5.4 (newer hosts); that is the compressor, not the package.
 
 CI runs it in `debian:bullseye` against `archive.debian.org` (bullseye LTS ended
 2026-08-31), builds the binaries, and proves the symbol the mitigation introduces,

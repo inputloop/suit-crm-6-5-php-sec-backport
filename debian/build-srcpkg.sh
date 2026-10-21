@@ -177,5 +177,12 @@ fi
 cp "${SRC}_${NV}.dsc" "${SRC}_${NV}.debian.tar.xz" \
    "${SRC}_${UV}.orig.tar.xz" "${SRC}_${UV}.orig.tar.xz.asc" "$OUT"/
 cd "$OUT" && sha256sum ./* > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS
+# Cross-witness invariant: the .debian.tar.xz BYTES depend on the xz version
+# (5.2 on bullseye vs 5.4 on newer hosts give different framing for the same
+# input), so two honest witnesses can disagree on the .dsc checksum. The tar
+# STREAM inside does not: compare this line across witnesses.
+printf '%s  %s (uncompressed tar stream; compare this across witnesses)\n' \
+    "$(xz -dc "${SRC}_${NV}.debian.tar.xz" | sha256sum | cut -c1-64)" "${SRC}_${NV}.debian.tar" \
+    > DEBIAN-TAR-STREAM.sha256
 say "delivered to $OUT:"
 cat SHA256SUMS
