@@ -32,7 +32,7 @@ jobs:
           - ver: "8.0"
             branch: PHP-8.0-CVE-2026-109618-109619
             sha: 82f8f31b16a035c1b67cc253e79f7cc288f4cc20
-            image: debian:bullseye
+            image: ubuntu:20.04      # bullseye-security pool 404s since bullseye LTS ended; 8.0 is fine on the 7.4 base
             suitecrm: v7.13.4
           - ver: "8.1"
             branch: PHP-8.1-CVE-2026-109618-109619

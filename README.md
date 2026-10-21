@@ -103,7 +103,7 @@ A `v*` tag turns the same set into a GitHub Release.
 | PHP | CI image | lab container (gw19, LXD) | SuiteCRM proven |
 |-----|----------|---------------------------|-----------------|
 | 7.4 | `ubuntu:20.04` | `ubuntu:20.04` (PASS 2026-10-21T18:14Z) | v7.13.4 |
-| 8.0 | `debian:bullseye` | — (CI only) | v7.13.4 |
+| 8.0 | `ubuntu:20.04` | — (CI only) | v7.13.4 |
 | 8.1 | `debian:bookworm` | `images:debian/12` (PASS 2026-10-21T18:12Z) | v7.14.9 |
 
 7.4 is built on an OpenSSL 1.1 / libxml2 2.9 base because that is what the
