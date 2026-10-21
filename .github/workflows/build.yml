@@ -75,9 +75,58 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  debian-src:
+    # Debian source package: Debian's own php7.4 7.4.33-1+deb11u5 (bullseye)
+    # plus one quilt patch carrying php-src 712e60f9ed, versioned
+    # 7.4.33-1+deb11u5+isc2.1; then a full binary build from that .dsc as the
+    # proof. See debian/build-srcpkg.sh.
+    name: debian source package (php7.4, bullseye)
+    runs-on: ubuntu-latest
+    container: debian:bullseye
+    steps:
+      - name: apt sources (bullseye is past LTS; use the archive, with deb-src)
+        run: |
+          set -eu
+          cat > /etc/apt/sources.list <<'EOF'
+          deb http://archive.debian.org/debian bullseye main
+          deb-src http://archive.debian.org/debian bullseye main
+          deb http://archive.debian.org/debian-security bullseye-security main
+          deb-src http://archive.debian.org/debian-security bullseye-security main
+          EOF
+          echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
+          apt-get update -q
+          apt-get install -y -q --no-install-recommends git ca-certificates curl \
+            dpkg-dev quilt devscripts debian-keyring debhelper fakeroot
+          apt-get build-dep -y -q php7.4
+          git config --global --add safe.directory '*'
+      - uses: actions/checkout@v4
+      - name: source package + binary build
+        run: JOBS=$(nproc) BUILD_BINARY=1 sh debian/build-srcpkg.sh "$GITHUB_WORKSPACE/dist-deb" /tmp/w 2>&1 | tee debian-build.txt
+      - name: prove the built package carries the patch
+        run: |
+          set -eu
+          cd dist-deb
+          dpkg-deb -x php7.4-cli_*_amd64.deb /tmp/cli
+          dpkg-deb -x php7.4-common_*_amd64.deb /tmp/cli
+          /tmp/cli/usr/bin/php7.4 -v | tee ../php-v.txt
+          # max_multipart_body_parts is NOT a discriminator here: Debian's 0056 patch already has it.
+          # zend_mm_safe_error_ex is a ZEND_API symbol introduced by the CVE commit and nowhere else
+          # in 7.4; php is linked -rdynamic so it is in the dynamic symbol table.
+          apt-get install -y -q --no-install-recommends binutils
+          nm -D /tmp/cli/usr/bin/php7.4 | grep -q ' T zend_mm_safe_error_ex$' \
+            || { echo "zend_mm_safe_error_ex missing from php7.4 binary"; exit 1; }
+          echo "zend_mm_safe_error_ex: present" | tee -a ../php-v.txt
+          cp ../debian-build.txt ../php-v.txt .
+          sha256sum * > SHA256SUMS-debian.txt && cat SHA256SUMS-debian.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: php7.4-debian-7.4.33-1+deb11u5+isc2.1
+          path: dist-deb/
+          if-no-files-found: error
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, debian-src]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
