@@ -1,0 +1,94 @@
+name: build-patched-php-and-prove-suitecrm
+
+# Builds PHP from the php-src EOL mitigation branches for CVE-2026-109618 /
+# CVE-2026-109619 at pinned commits, proves SuiteCRM 7.13 installs and logs
+# in on each, and publishes: the built tree, the FULL php-src source at that
+# commit, the source of this build apparatus, and SHA256SUMS.  Every run
+# publishes artifacts; a v* tag also publishes a GitHub Release.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: php ${{ matrix.ver }} (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ver: "7.4"
+            branch: PHP-7.4-CVE-2026-109618-109619
+            sha: 712e60f9edfd03f0960fc4fc3c2c375f42b90aa2
+            image: ubuntu:20.04      # OpenSSL 1.1, libxml2 2.9: what 7.4 was built against in its day
+            suitecrm: v7.13.4        # 7.13.x supports PHP 7.4/8.0 (SuiteCRM compatibility matrix)
+          - ver: "8.0"
+            branch: PHP-8.0-CVE-2026-109618-109619
+            sha: 82f8f31b16a035c1b67cc253e79f7cc288f4cc20
+            image: debian:bullseye
+            suitecrm: v7.13.4
+          - ver: "8.1"
+            branch: PHP-8.1-CVE-2026-109618-109619
+            sha: 1d7dec178a094e6e75b229ce22754045f8c6070a
+            image: debian:bookworm
+            suitecrm: v7.14.9        # 7.14.x supports PHP 8.1/8.2
+    env:
+      PREFIX: /opt/php-${{ matrix.branch }}
+      SRC: /usr/local/src/php-src-${{ matrix.branch }}
+    steps:
+      - name: dependencies
+        run: |
+          apt-get update -q
+          apt-get install -y -q --no-install-recommends git ca-certificates
+          git config --global --add safe.directory '*'
+      - uses: actions/checkout@v4
+      - name: build deps
+        run: sh php/deps.sh
+      - name: build php (pinned ${{ matrix.sha }})
+        run: JOBS=$(nproc) sh php/build-php.sh ${{ matrix.branch }} ${{ matrix.sha }} "$PREFIX" "$SRC"
+      - name: patch signature
+        run: sh test/php-signature.sh "$PREFIX" | tee signature-${{ matrix.ver }}.txt
+      - name: suitecrm install + login
+        run: sh suitecrm/setup-suitecrm.sh "$PREFIX" ${{ matrix.suitecrm }} /var/www/suitecrm 8080 && cp /var/www/SMOKE-RESULT.txt smoke-${{ matrix.ver }}.txt
+      - name: package binaries, full sources, checksums
+        run: |
+          set -eu
+          short=$(printf '%s' "${{ matrix.sha }}" | cut -c1-12)
+          out=dist; mkdir -p "$out"
+          tar -C /opt -czf "$out/php-${{ matrix.ver }}-cve-2026-109618-109619-$short-linux-x86_64.tar.gz" "php-${{ matrix.branch }}"
+          git -C "$SRC" archive --format=tar.gz --prefix="php-src-${{ matrix.branch }}-$short/" -o "$GITHUB_WORKSPACE/$out/php-src-${{ matrix.branch }}-$short.tar.gz" "${{ matrix.sha }}"
+          git archive --format=tar.gz --prefix=build-apparatus/ -o "$out/build-apparatus-$(git rev-parse --short=12 HEAD).tar.gz" HEAD
+          cp "$PREFIX/BUILD-INFO.txt" "$out/BUILD-INFO-${{ matrix.ver }}.txt"
+          cp "$SRC/configure.log" "$out/configure-${{ matrix.ver }}.log"
+          cp signature-${{ matrix.ver }}.txt smoke-${{ matrix.ver }}.txt "$out/"
+          (cd "$out" && sha256sum * > SHA256SUMS-${{ matrix.ver }}.txt && cat SHA256SUMS-${{ matrix.ver }}.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: php-${{ matrix.ver }}-cve-2026-109618-109619
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist }
+      - name: release
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          set -eu
+          find dist -type f | sort
+          cat dist/*/SHA256SUMS-*.txt > SHA256SUMS
+          gh release create "${GITHUB_REF_NAME}" --repo "$GITHUB_REPOSITORY" \
+            --title "patched PHP for SuiteCRM (CE 6.5 lineage) — ${GITHUB_REF_NAME}" \
+            --notes "Binaries, full php-src sources at the pinned commits, this build apparatus, and SHA256SUMS. See README.md." \
+            SHA256SUMS dist/*/*
