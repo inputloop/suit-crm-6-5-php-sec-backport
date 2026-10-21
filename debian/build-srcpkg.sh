@@ -124,12 +124,31 @@ fi
 QUILT_PATCHES=debian/patches quilt pop -a >/dev/null
 rm -rf .pc
 
-dch --newversion "$NV" --distribution bullseye --force-distribution \
-    "Rebuild of Debian's $DV with the PHP project's EOL mitigation for" \
-    "CVE-2026-109618 (RCE via OOM corruption) and CVE-2026-109619 (RCE via" \
-    "stale global state): php-src commit 712e60f9ed from branch" \
-    "PHP-7.4-CVE-2026-109618-109619, as debian/patches/$PATCH." \
-    "Not a Debian upload. https://github.com/inputloop/suit-crm-6-5-php-sec-backport"
+# Changelog entry written by hand, not by dch: dch wraps text differently
+# across versions and stamps the wall clock, which made two witnesses produce
+# different .dsc hashes for identical input. Fixed date = the date the CVE
+# commit landed upstream. SOURCE_DATE_EPOCH clamps the tar mtimes, so the
+# source package is byte-reproducible wherever it is built.
+CL_DATE='Sun, 18 Oct 2026 18:09:54 +0000'
+export SOURCE_DATE_EPOCH=1792346994   # == $CL_DATE (2026-10-18T18:09:54Z, the CVE commit's author date)
+{
+cat <<EOC
+$SRC ($NV) bullseye; urgency=medium
+
+  * Rebuild of Debian's $DV with the PHP project's EOL mitigation for
+    CVE-2026-109618 (RCE via OOM corruption) and CVE-2026-109619 (RCE via
+    stale global state): php-src commit 712e60f9ed from branch
+    PHP-7.4-CVE-2026-109618-109619, as debian/patches/$PATCH.
+    Not a Debian upload.
+    https://github.com/inputloop/suit-crm-6-5-php-sec-backport
+
+ -- $DEBFULLNAME <$DEBEMAIL>  $CL_DATE
+
+EOC
+cat debian/changelog
+} > debian/changelog.new && mv debian/changelog.new debian/changelog
+dpkg-parsechangelog -S Version | grep -qx "$NV" || die "changelog version mismatch"
+find debian -newermt "@$SOURCE_DATE_EPOCH" -exec touch -d "@$SOURCE_DATE_EPOCH" {} +
 
 # --- 3. source package -----------------------------------------------------
 # dpkg-source -b (not dpkg-buildpackage -S): the tree was unpacked fresh and
