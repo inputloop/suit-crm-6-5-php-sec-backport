@@ -126,6 +126,43 @@ The build needs the shared libraries from the OS it was built on (see the
 table above). Rebuilding on your own base is the supported path: that is
 why the full sources ship with every artifact.
 
+## Debian source package (7.4 only)
+
+For a Debian-based host that runs the distribution's `php7.4` packages, the
+build-from-git tree above is the wrong shape; what fits is a source package
+that `apt` and `dpkg` understand. `debian/build-srcpkg.sh` makes one:
+
+- starts from **Debian's own** `php7.4 7.4.33-1+deb11u5` (bullseye): the `.dsc`,
+  `.debian.tar.xz` and `.orig.tar.xz` are fetched from the Debian pool, the
+  `.dsc` checksums are enforced, and the `.dsc` signature is verified against
+  `debian-keyring` (`VERIFY_SIG=1`, the default);
+- adds **one** quilt patch, `debian/patches/CVE-2026-109618-109619.patch`: a
+  DEP-3 export of php-src commit `712e60f9ed`. The EOL branch is exactly the
+  7.4.33 tag plus a version bump plus that commit, so nothing else is needed.
+  Two hunks of the upstream commit (the `max_multipart_body_parts` INI) are
+  omitted because Debian's LTS series already carries them (patch 0056);
+- checks the result ("tree-check"): with all 72 patches applied, every file
+  the patch touches is byte-identical to upstream at the pinned commit, except
+  the three files where Debian's own LTS backports also live (reported, not
+  asserted);
+- versions it `7.4.33-1+deb11u5+isc2.1` (sorts after Debian's, before any later
+  Debian upload) and builds the source package with `dpkg-source -b`;
+- with `BUILD_BINARY=1`, unpacks that `.dsc` fresh and runs
+  `dpkg-buildpackage -b` (needs php7.4's build-dependencies).
+
+CI runs it in `debian:bullseye` against `archive.debian.org` (bullseye LTS ended
+2026-08-31), builds the binaries, and proves the symbol the mitigation introduces,
+`zend_mm_safe_error_ex`, is in the `php7.4` binary. Artifacts: the `.dsc`,
+`.debian.tar.xz`, Debian's unchanged `.orig.tar.xz` (+ upstream's `.asc`), the
+`.deb` files, the build log and `SHA256SUMS-debian.txt`.
+
+To rebuild yourself on bullseye: `apt-get build-dep php7.4` then
+`BUILD_BINARY=1 sh debian/build-srcpkg.sh out work`. To just get the source
+package anywhere with `dpkg-dev`, `quilt`, `devscripts` and `debian-keyring`:
+`sh debian/build-srcpkg.sh out work`.
+
+This is not a Debian upload and nobody here speaks for Debian.
+
 ## Status and bounds, stated plainly
 
 - Done: PHP 7.4 and 8.1 built from the pinned commits in LXD on a lab host;
@@ -138,6 +175,11 @@ why the full sources ship with every artifact.
   run against patched or unpatched builds — the proof here is "the pinned
   patch is in the binary and the application works on it", not "the exploit
   fails".
+- Debian source package: the `.dsc` was produced and re-unpacked (all 72
+  patches apply) outside docker; the binary build and the symbol proof are
+  CI's (see the `debian-src` job) and were not yet repeated on a second
+  host; the `.deb`s were not installed on a SuiteCRM host; 8.0 and 8.1
+  have no Debian packages here (bullseye never shipped them).
 - "SuiteCRM 6.5": SuiteCRM's 7.x line is the continuation of SugarCRM CE
   6.5. No single 7.x release spans PHP 7.4 and 8.1 — SuiteCRM's
   [compatibility matrix](https://docs.suitecrm.com/admin/compatibility-matrix/)
@@ -167,6 +209,9 @@ why the full sources ship with every artifact.
 ## License
 
 The scripts and documents in this repository: GNU General Public License,
-version 3 or any later version (SPDX `GPL-3.0-or-later`). PHP is under the
-PHP License 3.01; SuiteCRM under AGPL-3.0. Shipped sources carry their own
-licenses unchanged.
+version 3 or any later version (SPDX `GPL-3.0-or-later`), with one deliberate
+exception: `debian/build-srcpkg.sh` is under the Expat (MIT) licence, matching
+Debian's own `php7.4` packaging (`debian/*` in Debian's `debian/copyright`),
+so the two can be merged without friction. `debian/patches/*` is upstream's
+code and stays under the PHP License 3.01. PHP is under the PHP License 3.01;
+SuiteCRM under AGPL-3.0. Shipped sources carry their own licenses unchanged.

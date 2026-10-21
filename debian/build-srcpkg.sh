@@ -1,4 +1,9 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# Copyright 2026 Corwin Brust and contributors. Expat (MIT) licence, matching the
+# licence of Debian's php7.4 packaging (debian/* in Debian's debian/copyright)
+# which this script extends. The patch in debian/patches/ is upstream's code
+# and stays under the PHP License 3.01.
 # build-srcpkg.sh -- produce a Debian source package of php7.4 carrying the
 # PHP project's EOL mitigation for CVE-2026-109618 / CVE-2026-109619.
 #
